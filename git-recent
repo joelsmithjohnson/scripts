@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# This script is based on a script originally found at:
+# Source: https://gist.github.com/jordan-brough/48e2803c0ffa6dc2e0bd
+# See also: https://stackoverflow.com/a/25095062/58876
+#
+# Modifications:
+# - Replaced the original menu selection logic with a custom menu selection script (`menuselect.sh`).
+# - Added error handling to gracefully handle failures during the `git checkout` process.
+#
+# Usage:
+# Save this script as "git-recent", make it executable (`chmod +x git-recent`), and place it in your PATH.
+# Run it inside a Git repository using `git recent`.
+
+usage()
+{
+  echo "usage: git recent [-n lines] [-e]"
+}
+
+while getopts "hn:em" opt; do
+  case $opt in
+    h) # help
+      usage
+      exit 1
+      ;;
+    n) # number of results
+      NUM=$OPTARG
+      ;;
+    e) # validate existence
+      CHECK_EXISTENCE=1
+      ;;
+    m) # use the original way of selecting branches if you dont want to use menuselect.sh
+      USE_MANUAL_INPUT=1
+      ;;
+    \?)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+NUM=${NUM-10} # default to 10 lines
+CHECK_EXISTENCE=${CHECK_EXISTENCE-0} # default to *not* checking existence (faster)
+
+BRANCHES=(
+  $(git reflog |
+    egrep -io "moving from ([^[:space:]]+)" |
+    awk '{ print $3 }' | # extract 3rd column
+    awk ' !x[$0]++' | # Removes duplicates.  See http://stackoverflow.com/questions/11532157
+    egrep -v '^[a-f0-9]{40}$' | # remove hash results
+    while read line; do # verify existence
+      ([[ $CHECK_EXISTENCE = '0' ]] || git rev-parse --verify "$line" &>/dev/null) && echo "$line"
+    done |
+    head -n "$NUM"
+  )
+)
+
+dest_branch=""
+if [[ $USE_MANUAL_INPUT = '1' ]]; then
+    PS3="Choose a branch (or 'q' to quit): "
+    #Print the options with numbers
+    i=1
+    for branch in "${BRANCHES[@]}"; do
+        echo "$i) $branch"
+        i=$((i+1))
+    done
+
+    while true; do
+        # Read user input and process the choice
+        echo -n "$PS3"
+        read -r choice
+
+        if [[ "$choice" == "q" ]]; then
+            echo "Quitting..."
+            exit 0
+        elif [[ $choice -ge 1 && $choice -le ${#BRANCHES[@]} ]]; then
+            dest_branch="${BRANCHES[$((choice-1))]}"
+            break
+        else
+            echo ">>> Invalid Selection. Try again."
+        fi
+    done
+else
+    dest_branch=$(menuselect.sh "${BRANCHES[@]}") # trim whitespace
+fi
+if [[ -z "$dest_branch" ]]; then
+  echo "No branch selected. Exiting..."
+  exit 1
+fi
+git checkout "$dest_branch" || {
+  echo "Failed to checkout branch '$dest_branch'."
+  exit 1
+}
