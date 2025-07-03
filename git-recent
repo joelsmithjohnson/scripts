@@ -56,6 +56,7 @@ BRANCHES=(
 )
 
 dest_branch=""
+# if you don't want to use the menuselect.sh script, you can pass the -m flag to this script or just delete the following if statement and its else block
 if [[ $USE_MANUAL_INPUT = '1' ]]; then
     PS3="Choose a branch (or 'q' to quit): "
     #Print the options with numbers
